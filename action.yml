@@ -1,4 +1,4 @@
-name: tigerwest/slack-approval
+name: creeram/slack-approval
 description: Custom action to send approval request to Slack from Github, allowing only specified approvers
 author: Beom
 runs:
