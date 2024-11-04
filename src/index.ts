@@ -267,6 +267,12 @@ async function run(): Promise<void> {
         if (action.value !== aid) {
           return;
         }
+        const rejectorId = body.user.id;
+        if (!requiredApprovers.includes(rejectorId)) {
+          logger.info(`User <@${rejectorId}> attempted to reject but is not an approver.`);
+          return; // Skip rejection if the user is not in the approvers list
+       }
+        
         try {
           const response_blocks = (<BlockAction>body).message?.blocks;
           response_blocks.pop();
