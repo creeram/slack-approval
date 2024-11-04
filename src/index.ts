@@ -7,8 +7,6 @@ const signingSecret = process.env.SLACK_SIGNING_SECRET || "";
 const slackAppToken = process.env.SLACK_APP_TOKEN || "";
 const channel_id = process.env.SLACK_CHANNEL_ID || "";
 const baseMessageTs = core.getInput("baseMessageTs");
-const environment   = process.env.ENVIRONMENT || ""
-const url           = process.env.URL || ""
 const requiredApprovers = core
   .getInput("approvers", { required: true, trimWhitespace: true })
   ?.split(",");
@@ -17,6 +15,7 @@ const baseMessagePayload = JSON.parse(
   core.getMultilineInput("baseMessagePayload").join("")
 );
 const approvers: string[] = [];
+const rejectors: string[] = [];
 
 const successMessagePayload = JSON.parse(
   core.getMultilineInput("successMessagePayload").join("")
@@ -40,6 +39,7 @@ if (minimumApprovalCount > requiredApprovers.length) {
   );
   process.exit(1);
 }
+
 function hasPayload(inputs: any) {
   return inputs.text?.length > 0 || inputs.blocks?.length > 0;
 }
@@ -57,8 +57,6 @@ async function run(): Promise<void> {
     const aid = `${github_repos}-${workflow}-${run_id}-${run_number}-${run_attempt}`;
     const runnerOS = process.env.RUNNER_OS || "";
     const actor = process.env.GITHUB_ACTOR || "";
-    const branch = process.env.GITHUB_REF || "";
-    const versionTag = branch.replace(/^refs\/tags\//, "");
     const actionsUrl = `${github_server_url}/${github_repos}/actions/runs/${run_id}`;
     const mainMessagePayload = hasPayload(baseMessagePayload)
       ? baseMessagePayload
@@ -75,45 +73,28 @@ async function run(): Promise<void> {
               type: "section",
               fields: [
                 {
-                  "type": "mrkdwn",
-                  "text": `*Repo:*\n${github_server_url}/${github_repos}`,
-                },
-                { 
-                  "type": "mrkdwn",
-                  "text": `*Actions URL:*\n${actionsUrl}`, 
+                  type: "mrkdwn",
+                  text: `*GitHub Actor:*\n${actor}`,
                 },
                 {
-                  "type": "mrkdwn",
-                  "text": `*GitHub Actor:* ${actor}`,
-                },
-                { 
-                 "type": "mrkdwn",
-                 "text": `*Branch:* ${branch}`,
-                },
-                { 
-                 "type": "mrkdwn",
-                 "text": `*Release Version:* ${versionTag}`,
+                  type: "mrkdwn",
+                  text: `*Repos:*\n${github_server_url}/${github_repos}`,
                 },
                 {
-                  "type": "mrkdwn",
-                  "text": `*RunnerOS:* ${runnerOS}`,
+                  type: "mrkdwn",
+                  text: `*Actions URL:*\n${actionsUrl}`,
                 },
                 {
-                  "type": "mrkdwn",
-                  "text": `*GITHUB_RUNNER_ID:* ${run_id}`,
-                },
-                
-                {
-                  "type": "mrkdwn",
-                  "text": `*ENV:* ${environment}`,
+                  type: "mrkdwn",
+                  text: `*GITHUB_RUN_ID:*\n${run_id}`,
                 },
                 {
-                  "type": "mrkdwn",
-                  "text": `*Workflow:* ${workflow}`,
+                  type: "mrkdwn",
+                  text: `*Workflow:*\n${workflow}`,
                 },
                 {
-                  "type": "mrkdwn",
-                  "text": `*URL: *${url}`,
+                  type: "mrkdwn",
+                  text: `*RunnerOS:*\n${runnerOS}`,
                 },
               ],
             },
@@ -282,57 +263,76 @@ async function run(): Promise<void> {
       "slack-approval-reject",
       async ({ ack, client, body, logger, action }) => {
         await ack();
-        if (action.type !== "button") {
+
+        if (action.type !== "button" || action.value !== aid) {
           return;
         }
-        if (action.value !== aid) {
-          return;
-        }
+
         const rejectorId = body.user.id;
         if (!requiredApprovers.includes(rejectorId)) {
           logger.info(`User <@${rejectorId}> attempted to reject but is not an approver.`);
-          return; // Skip rejection if the user is not in the approvers list
-       }
-        
+          return; // Skip if the user is not in the approvers list
+        }
+
+        // Add rejector only if they haven't already rejected
+        if (!rejectors.includes(rejectorId)) {
+          rejectors.push(rejectorId);
+        }
+
         try {
-          const response_blocks = (<BlockAction>body).message?.blocks;
-          response_blocks.pop();
-          response_blocks.push({
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `Rejected by <@${body.user.id}> :x:`,
-            },
-          });
+          // Only proceed with rejection if all required approvers have rejected
+          if (rejectors.length >= requiredApprovers.length) {
+            const response_blocks = (<BlockAction>body).message?.blocks;
+            response_blocks.pop();
+            response_blocks.push({
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `Rejected by all required approvers :x:`,
+              },
+            });
 
-          await client.chat.update({
-            ts: mainMessage.ts || "",
-            channel: body.channel?.id || "",
-            ...(hasPayload(failMessagePayload)
-              ? failMessagePayload
-              : mainMessagePayload),
-          });
+            await client.chat.update({
+              ts: mainMessage.ts || "",
+              channel: body.channel?.id || "",
+              ...(hasPayload(failMessagePayload) ? failMessagePayload : mainMessagePayload),
+            });
 
-          await client.chat.update({
-            channel: body.channel?.id || "",
-            ts: replyMessage?.ts || "",
-            text: "",
-            blocks: response_blocks,
-          });
+            await client.chat.update({
+              channel: body.channel?.id || "",
+              ts: replyMessage?.ts || "",
+              text: "",
+              blocks: response_blocks,
+            });
+
+            process.exit(1);
+          } else {
+            // Update rejection status in thread
+            await client.chat.update({
+              channel: body.channel?.id || "",
+              ts: replyMessage?.ts || "",
+              text: "",
+              blocks: [
+                renderReplyTitle(),
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: `Rejected by <@${rejectorId}> :x:`,
+                  },
+                },
+              ],
+            });
+          }
         } catch (error) {
           logger.error(error);
         }
-
-        process.exit(1);
       }
     );
 
-    (async () => {
-      await app.start(3000);
-      console.log("Waiting Approval reaction.....");
-    })();
+    await app.start();
   } catch (error) {
-    if (error instanceof Error) core.setFailed(error.message);
+    core.setFailed(`Action failed with error ${error}`);
   }
 }
 
