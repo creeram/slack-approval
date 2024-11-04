@@ -41,6 +41,8 @@ const signingSecret = process.env.SLACK_SIGNING_SECRET || "";
 const slackAppToken = process.env.SLACK_APP_TOKEN || "";
 const channel_id = process.env.SLACK_CHANNEL_ID || "";
 const baseMessageTs = core.getInput("baseMessageTs");
+const environment = process.env.ENVIRONMENT || "";
+const url = process.env.URL || "";
 const requiredApprovers = (_a = core
     .getInput("approvers", { required: true, trimWhitespace: true })) === null || _a === void 0 ? void 0 : _a.split(",");
 const minimumApprovalCount = Number(core.getInput("minimumApprovalCount")) || 1;
@@ -77,6 +79,8 @@ function run() {
             const aid = `${github_repos}-${workflow}-${run_id}-${run_number}-${run_attempt}`;
             const runnerOS = process.env.RUNNER_OS || "";
             const actor = process.env.GITHUB_ACTOR || "";
+            const branch = process.env.GITHUB_REF || "";
+            const versionTag = branch.replace(/^refs\/tags\//, "");
             const actionsUrl = `${github_server_url}/${github_repos}/actions/runs/${run_id}`;
             const mainMessagePayload = hasPayload(baseMessagePayload)
                 ? baseMessagePayload
@@ -93,28 +97,44 @@ function run() {
                             type: "section",
                             fields: [
                                 {
-                                    type: "mrkdwn",
-                                    text: `*GitHub Actor:*\n${actor}`,
+                                    "type": "mrkdwn",
+                                    "text": `*Repo:*\n${github_server_url}/${github_repos}`,
                                 },
                                 {
-                                    type: "mrkdwn",
-                                    text: `*Repos:*\n${github_server_url}/${github_repos}`,
+                                    "type": "mrkdwn",
+                                    "text": `*Actions URL:*\n${actionsUrl}`,
                                 },
                                 {
-                                    type: "mrkdwn",
-                                    text: `*Actions URL:*\n${actionsUrl}`,
+                                    "type": "mrkdwn",
+                                    "text": `*GitHub Actor:* ${actor}`,
                                 },
                                 {
-                                    type: "mrkdwn",
-                                    text: `*GITHUB_RUN_ID:*\n${run_id}`,
+                                    "type": "mrkdwn",
+                                    "text": `*Branch:* ${branch}`,
                                 },
                                 {
-                                    type: "mrkdwn",
-                                    text: `*Workflow:*\n${workflow}`,
+                                    "type": "mrkdwn",
+                                    "text": `*Release Version:* ${versionTag}`,
                                 },
                                 {
-                                    type: "mrkdwn",
-                                    text: `*RunnerOS:*\n${runnerOS}`,
+                                    "type": "mrkdwn",
+                                    "text": `*RunnerOS:* ${runnerOS}`,
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": `*GITHUB_RUNNER_ID:* ${run_id}`,
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": `*ENV:* ${environment}`,
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": `*Workflow:* ${workflow}`,
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": `*URL: *${url}`,
                                 },
                             ],
                         },
