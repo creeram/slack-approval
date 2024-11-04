@@ -258,6 +258,11 @@ function run() {
                 if (action.value !== aid) {
                     return;
                 }
+                const rejectorId = body.user.id;
+                if (!requiredApprovers.includes(rejectorId)) {
+                    logger.info(`User <@${rejectorId}> attempted to reject but is not an approver.`);
+                    return; // Skip rejection if the user is not in the approvers list
+                }
                 try {
                     const response_blocks = (_c = body.message) === null || _c === void 0 ? void 0 : _c.blocks;
                     response_blocks.pop();
